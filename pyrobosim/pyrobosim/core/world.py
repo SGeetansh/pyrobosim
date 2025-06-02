@@ -95,24 +95,28 @@ class World:
             Otherwise, sampled poses may be resampled randomly.
         :return: True if the reset was successful, else False.
         """
-        from ..core.yaml_utils import WorldYamlLoader, WorldYamlWriter
+        from .yaml_utils import WorldYamlLoader
 
-        self.logger.info("Resetting world...")
+        ros_node = self.ros_node
+        for robot in self.robots:
+            if ros_node is not None:
+                ros_node.remove_robot_ros_interfaces(robot)
 
-        if deterministic and (self.source_yaml_file is not None):
-            WorldYamlLoader().from_file(self.source_yaml_file, world=self)
+        if self.source_yaml_file is not None:
+            world = WorldYamlLoader().from_file(self.source_yaml_file)
         else:
-            if self.source_yaml is None:
-                self.source_yaml = WorldYamlWriter().to_dict(self)
-            WorldYamlLoader().from_yaml(self.source_yaml, world=self)
+            world = WorldYamlLoader().from_yaml(self.source_yaml)
 
-        if self.gui is not None:
+        if ros_node is not None:
+            ros_node.set_world(world)
+            for robot in world.robots:
+                ros_node.add_robot_ros_interfaces(robot)
+
+        if self.gui:
+            self.gui.set_world(world)
             self.gui.canvas.show()
             self.gui.canvas.draw_signal.emit()
             self.gui.on_robot_changed()
-
-        self.logger.info("Reset world successfully.")
-        return True  # No error handling yet
 
     def shutdown(self) -> None:
         """Cleanly shuts down the world."""

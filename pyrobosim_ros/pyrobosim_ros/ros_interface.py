@@ -811,17 +811,27 @@ class WorldROSWrapper(Node):  # type: ignore[misc]
         :param response: The service response indicating success or failure.
         :return: The modified service response containing the result of the reset operation.
         """
-        # Wait to cancel all the robot actions.
-        cancel_threads = [
-            Thread(target=robot.cancel_actions) for robot in self.world.robots
-        ]
-        for thread in cancel_threads:
-            thread.start()
-        for thread in cancel_threads:
-            thread.join()
+        from pyrobosim.core import Robot
 
-        response.success = self.world.reset(deterministic=request.deterministic)
-        return response
+        try:
+            self.get_logger().info("Reset world service called. Resetting world...")
+            # Cancel possible running planning and follow path callbacks
+            for robot_name in self.world.get_robot_names():
+                self._abort_robot_actions = True
+                robot_instance: Robot = self.world.get_robot_by_name(robot_name)
+                robot_instance.cancel_actions()
+            self.world.reset()
+
+            response.message = "World reset successfully!"
+            # response.success = True
+            self.get_logger().info("World reset successfully.")
+            return response
+
+        except Exception as e:
+            self.get_logger().error(f"Failed to reset the world: {e}")
+            response.success = False
+            # response.message = f"Failed to reset the world. Error: {e}"
+            return response
 
 
 def update_world_from_state_msg(world: World, msg: WorldState) -> None:
