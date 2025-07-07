@@ -138,6 +138,14 @@ class WorldROSWrapper(Node):
             callback_group=ReentrantCallbackGroup(),
         )
 
+        self.reset_world_srv = self.create_service(
+            Trigger,
+            "reset_world",
+            self.reset_world_callback,
+            callback_group=ReentrantCallbackGroup()
+        )
+
+
         # Initialize robot specific interface dictionaries
         self.robot_command_subs = {}
         self.robot_state_pubs = {}
@@ -207,10 +215,15 @@ class WorldROSWrapper(Node):
         self.get_logger().info("PyRoboSim ROS node ready!")
 
         if auto_spin:
-            try:
-                executor.spin()
-            finally:
-                self.shutdown()
+            while rclpy.ok():
+                try:
+                    executor.spin()
+                except Exception as e:
+                    print(f"Handling exception of rclpy.spin(): {e}")
+                    executor = MultiThreadedExecutor(num_threads=self.num_threads)
+                    executor.add_node(self)
+                    self.executor = executor
+            self.shutdown()
 
     def shutdown(self):
         """Shuts down cleanly."""
@@ -819,6 +832,37 @@ class WorldROSWrapper(Node):
         if result is not None:
             response.result = execution_result_to_ros(result)
         return response
+
+    def reset_world_callback(self, request, response):
+        """
+        Resets the world as a response to a service request.
+
+        :param response: The unmodified service response.
+        :type response: :class:`pyrobosim_msgs.srv.SetLocationState.Response`
+
+        :return: The modified service response containing result of setting the location state.
+        :rtype: :class:`pyrobosim_msgs.srv.RequestWorldState.Response`
+        """
+        from pyrobosim.core import Robot
+        try:
+            self.get_logger().info("Reset world service called. Resetting world...")
+            # Cancel possible running planning and follow path callbacks
+            for robot_name in self.world.get_robot_names():
+                self._abort_robot_actions = True
+                robot_instance: Robot = self.world.get_robot_by_name(robot_name)
+                robot_instance.cancel_actions()
+            self.world.reset()
+
+            response.message = "World reset successfully!"
+            response.success = True
+            self.get_logger().info("World reset successfully.")
+            return response
+
+        except Exception as e:
+            self.get_logger().error(f"Failed to reset the world: {e}")
+            response.success = False
+            response.message = f"Failed to reset the world. Error: {e}"
+            return response
 
 
 def update_world_from_state_msg(world, msg):

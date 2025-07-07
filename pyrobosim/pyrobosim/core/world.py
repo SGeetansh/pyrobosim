@@ -83,6 +83,35 @@ class World:
         self.set_inflation_radius(inflation_radius)
 
         self.logger.info("Created world.")
+    
+    def reset(self):
+        """
+        Resets the world to its original state.
+        """
+        from .yaml_utils import WorldYamlLoader
+
+        ros_node = self.ros_node if self.has_ros_node else None
+        for robot in self.robots:
+            robot.cancel_actions()
+            # robot.reset_path_planner()
+            if ros_node is not None:
+                ros_node.remove_robot_ros_interfaces(robot)
+
+        if self.source_yaml_file is not None:
+            world = WorldYamlLoader().from_file(self.source_yaml_file)
+        else:
+            world = WorldYamlLoader().from_yaml(self.source_yaml)
+
+        if ros_node is not None:
+            ros_node.set_world(world)
+            for robot in world.robots:
+                ros_node.add_robot_ros_interfaces(robot)
+
+        if self.has_gui:
+            self.gui.set_world(world)
+            self.gui.canvas.show()
+            self.gui.canvas.draw_signal.emit()
+            self.gui.on_robot_changed()
 
     ############
     # Metadata #
